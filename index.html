@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Slot Machine Game</title>
+  <style>
+    body {
+      background-color: #111;
+      color: #fff;
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding-top: 50px;
+    }
+    h1 { font-size: 2.5rem; }
+    .reels { font-size: 4rem; margin: 20px 0; letter-spacing: 10px; }
+    .balance, .coins, .controls { font-size: 1.2rem; margin: 10px 0; }
+    input[type="number"] {
+      padding: 5px; font-size: 1rem; width: 100px; text-align: center;
+    }
+    button {
+      padding: 10px 20px; font-size: 1rem; margin: 5px; cursor: pointer;
+    }
+    .reel-box {
+      display: inline-block; border: 4px solid #fff; padding: 20px;
+      border-radius: 10px; background: #222; width: 80px;
+    }
+    .reel-box.spin {
+      animation: spin 0.1s infinite;
+    }
+    @keyframes spin {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.2); }
+      100% { transform: scale(1); }
+    }
+    #store, #upgrade-store {
+      display: none; background-color: #222; padding: 20px;
+      border-radius: 10px; margin: 20px auto; width: 320px; text-align: left;
+    }
+    .store-item {
+      margin: 10px 0; display: flex; justify-content: space-between;
+      align-items: center;
+    }
+    .color-sample {
+      width: 30px; height: 30px; display: inline-block;
+      border-radius: 5px; margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🎰 Slot Machine</h1>
+  <div class="balance">Balance: $<span id="balance">100</span></div>
+  <div class="coins">Coins: 🪙 <span id="coins">0</span></div>
+
+  <div class="reels">
+    <span class="reel-box" id="reel1">🍒</span>
+    <span class="reel-box" id="reel2">🍋</span>
+    <span class="reel-box" id="reel3">🔔</span>
+  </div>
+
+  <div class="controls">
+    <input type="number" id="bet" placeholder="Enter bet" min="1" />
+    <button id="spin-btn">🎲 Spin</button>
+    <button id="store-btn">🎨 Theme Store</button>
+    <button id="upgrade-btn">⚙️ Upgrades</button>
+  </div>
+
+  <p id="message"></p>
+
+  <div id="store">
+    <h3>🎨 Buy Background Colors</h3>
+    <div id="store-items"></div>
+  </div>
+
+  <div id="upgrade-store">
+    <h3>⚙️ Buy Upgrades</h3>
+    <div id="upgrade-items"></div>
+  </div>
+
+  <audio id="spin-sound" src="Spin.wav" preload="auto"></audio>
+  <audio id="win-sound" src="Win.wav" preload="auto"></audio>
+  <audio id="lose-sound" src="Lose.wav" preload="auto"></audio>
+
+  <div id="coinflip-container" style="margin-top:20px;">
+    <h3>🪙 Coin Flip</h3>
+    <input type="number" id="coinflip-bet" placeholder="Bet $" min="1" style="width:80px;">
+    <button id="coinflip-heads">Heads</button>
+    <button id="coinflip-tails">Tails</button>
+    <span id="coinflip-result"></span>
+  </div>
+
+  <script>
+    // --- Variables ---
+    const symbols = ["🍒", "🍋", "🔔", "💎", "7️⃣"];
+    let balance = 100;
+    let coins = 0;
+
+    let upgrades = {
+      multiplier: 1,
+      reelSpeed: 1,
+      bonusChance: 0,
+      moneyGen: 0,
+    };
+
+    const storeColors = [
+      { name: "Blue", color: "#001f3f", cost: 20 },
+      { name: "Green", color: "#004d00", cost: 20 },
+      { name: "Red", color: "#660000", cost: 20 },
+      { name: "Purple", color: "#2e003e", cost: 30 },
+      { name: "Gold", color: "#8B7500", cost: 50 }
+    ];
+
+    const upgradeOptions = [
+      { name: "2x Winnings", key: "multiplier", value: 2, cost: 50 },
+      { name: "Faster Reels", key: "reelSpeed", value: 0.7, cost: 40 },
+      { name: "Bonus Chance", key: "bonusChance", value: 0.1, cost: 60 },
+      { name: "Money Generator - $10/sec", key: "moneyGen", value: 10, cost: 5000 },
+      { name: "Money Generator - $20/sec", key: "moneyGen", value: 20, cost: 9000 },
+      { name: "Money Generator - $30/sec", key: "moneyGen", value: 30, cost: 14000 },
+    ];
+
+    const purchasedColors = [];
+    const reelEls = [
+      document.getElementById("reel1"),
+      document.getElementById("reel2"),
+      document.getElementById("reel3")
+    ];
+    const balanceEl = document.getElementById("balance");
+    const coinsEl = document.getElementById("coins");
+    const storeEl = document.getElementById("store");
+    const upgradeStoreEl = document.getElementById("upgrade-store");
+    const storeItemsEl = document.getElementById("store-items");
+    const upgradeItemsEl = document.getElementById("upgrade-items");
+    const messageEl = document.getElementById("message");
+    const betInput = document.getElementById("bet");
+
+    const spinSound = document.getElementById("spin-sound");
+    const winSound = document.getElementById("win-sound");
+    const loseSound = document.getElementById("lose-sound");
+
+    function updateUI() {
+      balanceEl.textContent = balance;
+      coinsEl.textContent = coins;
+    }
+
+    function toggleStore() {
+      storeEl.style.display = storeEl.style.display === "none" ? "block" : "none";
+    }
+
+    function toggleUpgrades() {
+      upgradeStoreEl.style.display = upgradeStoreEl.style.display === "none" ? "block" : "none";
+    }
+
+    function renderStore() {
+      storeItemsEl.innerHTML = "";
+      storeColors.forEach(color => {
+        const item = document.createElement("div");
+        item.className = "store-item";
+        item.innerHTML = `
+          <div><span class="color-sample" style="background-color:${color.color}"></span> ${color.name}</div>
+          <button class="buy-color" data-color="${color.color}" data-cost="${color.cost}">$${color.cost}</button>
+        `;
+        storeItemsEl.appendChild(item);
+      });
+      document.querySelectorAll('.buy-color').forEach(btn => {
+        btn.addEventListener('click', function() {
+          buyColor(this.getAttribute('data-color'), parseInt(this.getAttribute('data-cost')));
+        });
+      });
+    }
+
+    function renderUpgrades() {
+      upgradeItemsEl.innerHTML = "";
+      upgradeOptions.forEach(upg => {
+        const item = document.createElement("div");
+        item.className = "store-item";
+        item.innerHTML = `
+          <div>${upg.name}</div>
+          <button class="buy-upgrade" data-key="${upg.key}" data-value="${upg.value}" data-cost="${upg.cost}">$${upg.cost}</button>
+        `;
+        upgradeItemsEl.appendChild(item);
+      });
+      document.querySelectorAll('.buy-upgrade').forEach(btn => {
+        btn.addEventListener('click', function() {
+          buyUpgrade(
+            this.getAttribute('data-key'),
+            this.getAttribute('data-value') * 1,
+            parseInt(this.getAttribute('data-cost'))
+          );
+        });
+      });
+    }
+
+    function buyColor(color, cost) {
+      if (purchasedColors.includes(color)) {
+        document.body.style.backgroundColor = color;
+        return;
+      }
+      if (balance >= cost) {
+        balance -= cost;
+        purchasedColors.push(color);
+        document.body.style.backgroundColor = color;
+        messageEl.textContent = "🎉 You bought a new theme!";
+        updateUI();
+      } else {
+        messageEl.textContent = "Not enough money!";
+      }
+    }
+
+    function buyUpgrade(key, value, cost) {
+      if (key === "moneyGen" && balance >= cost) {
+        balance -= cost;
+        upgrades[key] = value;
+        messageEl.textContent = `💰 Money Generator upgraded to $${value}/sec!`;
+        updateUI();
+      } else if (key !== "moneyGen" && coins >= cost) {
+        coins -= cost;
+        upgrades[key] = value;
+        messageEl.textContent = `⚙️ Upgrade "${key}" activated!`;
+        updateUI();
+      } else {
+        messageEl.textContent = "Not enough resources!";
+      }
+    }
+
+    function startMoneyGenerator() {
+      setInterval(() => {
+        if (upgrades.moneyGen > 0) {
+          balance += upgrades.moneyGen;
+          updateUI();
+        }
+      }, 1000);
+    }
+
+    function getRandomSymbol() {
+      return symbols[Math.floor(Math.random() * symbols.length)];
+    }
+
+    function sleep(ms) {
+      return new Promise(resolve => setTimeout(resolve, ms));
+    }
+
+    async function spinReels(duration = 2000, steps = 16) {
+      reelEls.forEach(el => el.classList.add("spin"));
+      // Play spin sound and keep it looping during spin
+      if (spinSound) {
+        try {
+          spinSound.currentTime = 0;
+          spinSound.loop = true;
+          spinSound.play();
+        } catch (e) {}
+      }
+      for (let i = 0; i < steps; i++) {
+        reelEls.forEach(el => el.textContent = getRandomSymbol());
+        await sleep((duration / steps) * upgrades.reelSpeed);
+      }
+      // Stop spin sound after spinning
+      if (spinSound) {
+        try {
+          spinSound.pause();
+          spinSound.currentTime = 0;
+          spinSound.loop = false;
+        } catch (e) {}
+      }
+      reelEls.forEach(el => el.classList.remove("spin"));
+      return reelEls.map(el => el.textContent);
+    }
+
+    function playWinSound() {
+      if (winSound) {
+        try { winSound.currentTime = 0; winSound.play(); } catch (e) {}
+      }
+    }
+    function playLoseSound() {
+      if (loseSound) {
+        try { loseSound.currentTime = 0; loseSound.play(); } catch (e) {}
+      }
+    }
+
+    function checkWin(result, bet) {
+      if (result[0] === result[1] && result[1] === result[2]) {
+        let win = bet * 10 * upgrades.multiplier;
+        messageEl.textContent = `🎉 JACKPOT! You win $${win}!`;
+        playWinSound();
+        balance += win;
+        coins += Math.floor(win / 10);
+        return;
+      }
+      if (result[0] === result[1] || result[1] === result[2] || result[0] === result[2]) {
+        let win = bet * 2 * upgrades.multiplier;
+        messageEl.textContent = `✨ You win $${win}!`;
+        playWinSound();
+        balance += win;
+        coins += Math.floor(win / 10);
+        return;
+      }
+      if (Math.random() < upgrades.bonusChance) {
+        let win = bet * 5 * upgrades.multiplier;
+        messageEl.textContent = `🍀 BONUS! You win $${win}!`;
+        playWinSound();
+        balance += win;
+        coins += Math.floor(win / 10);
+        return;
+      }
+      messageEl.textContent = "😢 No win. Try again!";
+      playLoseSound();
+    }
+
+    async function play() {
+      let bet = parseInt(betInput.value, 10);
+      if (isNaN(bet) || bet < 1) {
+        messageEl.textContent = "Enter a valid bet!";
+        return;
+      }
+      if (bet > balance) {
+        messageEl.textContent = "Not enough balance!";
+        return;
+      }
+      balance -= bet;
+      updateUI();
+      let result = await spinReels(1500, 16);
+      checkWin(result, bet);
+      updateUI();
+    }
+
+    function coinFlip(choice) {
+      const bet = parseInt(document.getElementById('coinflip-bet').value, 10);
+      const resultEl = document.getElementById('coinflip-result');
+      if (isNaN(bet) || bet < 1) {
+        resultEl.textContent = " Enter a valid bet!";
+        return;
+      }
+      if (bet > balance) {
+        resultEl.textContent = " Not enough balance!";
+        return;
+      }
+      balance -= bet;
+      updateUI();
+      const flip = Math.random() < 0.5 ? 'heads' : 'tails';
+      if (choice === flip) {
+        const win = bet * 2;
+        balance += win;
+        resultEl.textContent = ` 🎉 It's ${flip}! You win $${win}.`;
+        playWinSound();
+      } else {
+        resultEl.textContent = ` 😢 It's ${flip}. You lose.`;
+        playLoseSound();
+      }
+      updateUI();
+    }
+
+    document.getElementById('spin-btn').addEventListener('click', play);
+    document.getElementById('store-btn').addEventListener('click', toggleStore);
+    document.getElementById('upgrade-btn').addEventListener('click', toggleUpgrades);
+    document.getElementById('coinflip-heads').addEventListener('click', () => coinFlip('heads'));
+    document.getElementById('coinflip-tails').addEventListener('click', () => coinFlip('tails'));
+
+    renderStore();
+    renderUpgrades();
+    updateUI();
+    startMoneyGenerator();
+  </script>
+<div style="position: fixed; left: 10px; bottom: 10px; color: #fff; font-size: 1rem; opacity: 0.7; z-index: 1000;">
+  Made by Davion
+</div>
+</body>
+</html>
